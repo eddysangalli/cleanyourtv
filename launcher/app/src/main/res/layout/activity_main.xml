@@ -313,6 +313,14 @@
                     android:drawableStart="@drawable/ic_input"
                     android:nextFocusDown="@+id/grid" />
 
+                <!-- Icon only: opens the existing Google Assistant (ACTION_ASSIST), no second listener. -->
+                <TextView
+                    android:id="@+id/btnVoice"
+                    style="@style/TopButtonIcon"
+                    android:contentDescription="@string/voice"
+                    android:drawableStart="@drawable/ic_mic"
+                    android:nextFocusDown="@+id/grid" />
+
                 <TextView
                     android:id="@+id/btnWifi"
                     style="@style/TopButton"
