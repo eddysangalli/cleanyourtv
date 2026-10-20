@@ -1,0 +1,59 @@
+# Philco 4K SMART TV (KTC chassi, codename zhongshan, MediaTek), Android 11 (SDK 30),
+# firmware RTM5.220609.082. Brazilian unit, Google TV services on stock Android TV.
+# ro.product.model = 4K SMART TV; ro.product.manufacturer = KTC.
+#
+# Apply:   TV_HOST=<tv ip> tools/disable.sh examples/philco-4k-smart-tv/debloat.txt
+# Undo:    TV_HOST=<tv ip> tools/restore.sh examples/philco-4k-smart-tv/debloat.txt
+# Everything is DISABLED, not uninstalled. Comment out any line you want to keep.
+#
+# Stock launcher: com.google.android.tvlauncher (the scripts' default); HOME candidates on stock are
+# only tvlauncher (priority 2) and com.android.tv.settings/.system.FallbackHome. setupwraith's
+# RecoveryActivity does NOT claim HOME on this firmware (verified 2026-10-20 with
+# `cmd package query-activities -c android.intent.category.HOME`), so setupwraith stays ENABLED on
+# purpose: no Home takeover risk, no Wi-Fi loss, casting credentials untouched.
+# Live TV: com.mediatek.wwtv.tvcenter. TV inputs: com.mediatek.tvinput (tuners + HDMI).
+# Saved Wi-Fi networks at test time: RODRIGUES OI FIBRA 2G / RODRIGUES SALA (owner not checked,
+# irrelevant while setupwraith is kept).
+#
+# KEEP, even though the names look like bloat:
+# - fusion.android.tv.demo: on the MTC-built Hitachi 65QLEDSM20 the same package ("MtcRetailDisplay")
+#   handles the remote's Input button (TV_INPUT_BUTTON) and Bluetooth pairing; it does not loop on
+#   this set. Disable only if a retail demo loop shows up, and re-enable if Input stops working.
+# - com.mediatek.leanbacklauncher.partnercustomizer (+ .overlay): provides the tvlauncher.widget
+#   provider that com.mediatek.tv.service needs after a reboot (see examples/chiq-ai-pont).
+# - com.mediatek.* (tv.service, tvinput, tvcenter, mediaplayer, network, autopair, wwtv.*):
+#   inputs, tuners and Live TV; com.dolby.android.audio.service: audio processing.
+# - com.ktc.tv.factory, ktc.factorymenu.ui, mediatek.factorymenu.ui, com.ktc.serialport:
+#   factory/panel menus used for service; com.mstar.android.tv.disclaimercustomization kept for now.
+# - com.google.android.apps.mediashell (Chromecast receiver), com.google.android.tv.remote.service
+#   (phone remote), com.google.android.marvin.talkback (accessibility).
+# - Netflix (com.netflix.ninja), YouTube (com.google.android.youtube.tv), Google Assistant
+#   (com.google.android.katniss + com.google.android.tv.assistant): all kept by choice 2026-10-20.
+# - android.autoinstalls.config.ktc.pai is the KTC Play Auto Install config: disabled below, like
+#   android.autoinstalls.config.JVC on the Hitachi/MTC lists.
+#
+# PROVISIONAL: applied 2026-10-20, pending the few-days soak per CONTRIBUTING.md.
+
+# Batch 1: ads, telemetry and recommendation rows
+com.google.android.tvrecommendations    # sponsored and recommendation rows on the stock Home
+android.autoinstalls.config.ktc.pai     # Play Auto Install: partner apps pushed after setup
+com.google.android.feedback             # "Send feedback" uploader
+com.google.android.partnersetup         # Google RLZ attribution pings
+com.google.android.syncadapters.calendar
+
+# Batch 2: background services and preloaded apps
+com.google.android.backdrop             # ambient screensaver; launcher/ ships ClockDream instead
+com.google.android.play.games
+com.google.android.videos               # Google TV / Play Movies
+com.android.printspooler                # printing from a TV
+
+# Batch 3: personal choice (off by choice 2026-10-20)
+com.amazon.amazonvideo.livingroom       # Prime Video
+
+# Off by choice, kept enabled: com.netflix.ninja (Netflix), com.google.android.youtube.tv (YouTube),
+# com.google.android.youtube.tvmusic (YouTube Music), com.google.android.katniss and
+# com.google.android.tv.assistant (Assistant / voice button).
+#
+# Stock launcher, replaced by launcher/. Left to launcher/build-and-install.sh, which disables it only
+# after the new home is installed and set as default; restore.sh re-enables it.
+# com.google.android.tvlauncher
