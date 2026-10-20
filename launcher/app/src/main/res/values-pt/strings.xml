@@ -3,6 +3,7 @@
     <string name="app_name">Início</string>
     <string name="inputs">Entradas</string>
     <string name="wifi">Wi-Fi</string>
+    <string name="voice">Voz</string>
     <string name="settings">Configurações</string>
     <string name="choose_input">Entradas</string>
     <string name="connected">Conectado</string>
@@ -72,4 +73,35 @@
         <item quantity="other">%1$d apps</item>
     </plurals>
     <string name="greeting_with_name">%1$s, %2$s</string>
+
+    <!-- v2.4: dock/menu keys that were still English on a Portuguese TV. -->
+    <string name="launcher_settings">Definições do launcher</string>
+    <string name="columns_label">Apps por linha</string>
+    <string name="rows_below_dock_label">Linhas abaixo da dock</string>
+    <string name="wallpaper_label">Fundo de ecrã</string>
+    <string name="wallpaper_state">Fundo de ecrã: %1$s</string>
+    <string name="wallpaper_none">Nenhum</string>
+    <string name="wallpaper_applied">Fundo de ecrã alterado</string>
+    <string name="wallpaper_theme_default">Predefinição do tema</string>
+    <string name="animations_state">Animações: %1$s</string>
+    <string name="advanced_effects">Efeitos avançados</string>
+    <string name="advanced_effects_state">Efeitos avançados: %1$s</string>
+    <string name="advanced_effects_warning">Adiciona um bloco elevado, zoom nos ícones e transições suaves. Pode aumentar o uso de memória; a diferença real depende da sua TV.</string>
+    <string name="follow_theme">Seguir o tema (repor as escolhas na TV)</string>
+    <string name="follow_theme_hint">Usa o tema atual ou a pré-definição de layout e movimento. Enviar ou repor um tema também limpa as suas escolhas na TV.</string>
+    <string name="tv_settings">Definições de sistema da TV</string>
+    <string name="quick_picture">Imagem</string>
+    <string name="quick_network">Rede</string>
+    <string name="quick_apps">Apps</string>
+    <string name="quick_apps_hint">Reativar</string>
+    <string name="on">Ligado</string>
+    <string name="off">Desligado</string>
+    <string name="enable">Ativar</string>
+    <string name="race_kicker">Ronda %1$d · %2$s · %3$s</string>
+    <string name="race_kicker_no_place">Ronda %1$d · %2$s</string>
+    <string name="race_next">%1$s em %2$s</string>
+    <string name="race_lights_out">Apagém em %1$s</string>
+    <string name="race_live">%1$s · em direto</string>
+    <string name="race_finished">Bandeira quadriculada</string>
+    <string name="last_opened">Última abertura %1$s</string>
 </resources>
