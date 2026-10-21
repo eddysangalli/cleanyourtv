@@ -10,6 +10,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -68,6 +69,7 @@ import androidx.dynamicanimation.animation.FloatPropertyCompat;
 import androidx.dynamicanimation.animation.SpringAnimation;
 import androidx.dynamicanimation.animation.SpringForce;
 import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.io.File;
@@ -104,6 +106,12 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private AppAdapter adapter;
     private RecyclerView grid;
+    /** The news row below the grid (news_enabled): RSS headlines from the owner's sources. */
+    private RecyclerView newsRow;
+    private NewsAdapter newsAdapter;
+    /** The full-screen news as a screen saver (news_idle): fires once the remote has been idle. */
+    private final Handler newsIdle = new Handler(Looper.getMainLooper());
+    private final Runnable newsIdleStart = this::startNewsScreensaver;
     private FrameLayout root;
     private WallpaperPlayer wallpaperPlayer;
     private GlassView glass;
@@ -407,6 +415,29 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         adapter.setSavedOrder(Order.ranks(Order.load(Order.file(this)), dockApps));
         grid.setAdapter(adapter);
 
+        // The news row (news_enabled): headlines from the owner's RSS sources, one card each.
+        // The row is gone until headlines arrive, so the grid keeps its full height meanwhile.
+        newsRow = findViewById(R.id.newsRow);
+        newsRow.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false));
+        newsAdapter = new NewsAdapter(this::openNews);
+        newsRow.setAdapter(newsAdapter);
+        // Focus on a headline clears the grid's highlight and shelf, like the library button does.
+        newsRow.addOnChildAttachStateChangeListener(new RecyclerView.OnChildAttachStateChangeListener() {
+            @Override
+            public void onChildViewAttachedToWindow(@NonNull View v) {
+                v.setOnFocusChangeListener((view, focused) -> {
+                    if (focused) {
+                        hideGlass();
+                        hideHero();
+                    }
+                });
+            }
+
+            @Override
+            public void onChildViewDetachedFromWindow(@NonNull View v) {
+            }
+        });
+
         // tvOS layout: push the dock row towards the bottom of the screen, leaving room for
         // rows_below_dock grid rows under it; the rest of the grid stays below until you press Down.
         int rowsBelowDock = cfg.rowsBelowDock;
@@ -602,6 +633,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         updateRace();
         updateWifiLabel();
         updateInputsButton();
+        refreshNews();
+        bumpNewsIdle();          // the screen-saver clock starts from the moment Home is in front.
         if (showStats) startStats();
         sky.update();
         wallpaperPlayer.start();
@@ -620,6 +653,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == LAUNCHER_SETTINGS_REQUEST && resultCode == RESULT_OK) recreate();
+    }
+
+    /** Every key and touch restarts the screen-saver clock; the news only takes over when left alone. */
+    @Override
+    public void onUserInteraction() {
+        super.onUserInteraction();
+        bumpNewsIdle();
     }
 
     /** Rebuilds the tiles (and the module cards), then puts focus back where it was. */
@@ -709,6 +749,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         ambient.animate().cancel();
         heroArt.animate().cancel();
         handler.removeCallbacks(minuteTick);
+        newsIdle.removeCallbacks(newsIdleStart);   // no screen saver over another app.
         stopStats();
         if (diya != null) diya.stop();
         cancelPendingFocusScroll();
@@ -1630,6 +1671,72 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 : String.format(Locale.US, "%.1f GB", gb);
     }
 
+    // ---- news ----------------------------------------------------------------------------------
+
+    /** How long the remote may lie untouched before the full-screen news takes over as a screen saver. */
+    private static final long NEWS_IDLE_MS = 5 * 60 * 1000;
+
+    /**
+     * Restarts the screen-saver clock. Called on every key and touch, so the full-screen news only
+     * ever appears when nobody has used the TV for NEWS_IDLE_MS (news_idle).
+     */
+    private void bumpNewsIdle() {
+        newsIdle.removeCallbacks(newsIdleStart);
+        SharedPreferences choices = getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE);
+        if (choices.getBoolean("news_idle", true) && NewsFeed.enabled(choices)) {
+            newsIdle.postDelayed(newsIdleStart, NEWS_IDLE_MS);
+        }
+    }
+
+    /** The screen saver itself: the cached front page, full screen, one headline at a time. */
+    private void startNewsScreensaver() {
+        if (isFinishing() || isDestroyed()) return;
+        if (NewsFeed.cached(this).isEmpty()) return;    // nothing to show: stay on Home.
+        startActivity(new Intent(this, NewsFullActivity.class));
+    }
+
+    /** The news row: cached headlines at once, the network only in the background, never blocking. */
+    private void refreshNews() {
+        if (!NewsFeed.enabled(getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE))) {
+            newsRow.setVisibility(View.GONE);
+            return;
+        }
+        List<NewsFeed.Headline> cached = NewsFeed.cached(this);
+        if (!cached.isEmpty()) showNews(cached);
+        if (NewsFeed.stale(this)) NewsFeed.fetch(this, this::showNews);
+    }
+
+    private void showNews(List<NewsFeed.Headline> headlines) {
+        if (headlines.isEmpty()) {
+            newsRow.setVisibility(View.GONE);
+            return;
+        }
+        newsAdapter.submit(headlines);
+        newsRow.setVisibility(View.VISIBLE);
+    }
+
+    /** A news card opens its article wherever the TV keeps a browser. */
+    private void openNews(NewsFeed.Headline headline) {
+        if (headline.link.isEmpty()) return;
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(headline.link)));
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, getString(R.string.cant_open, headline.source), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /** Moves focus to the news row, when it is on screen with headlines in it. */
+    private void focusNews() {
+        if (newsRow.getVisibility() != View.VISIBLE || newsAdapter.getItemCount() == 0) return;
+        newsRow.scrollToPosition(0);
+        View card = newsRow.getLayoutManager().findViewByPosition(0);
+        if (card != null) card.requestFocus();
+        else newsRow.post(() -> {                       // not laid out yet: try after the scroll
+            View first = newsRow.getLayoutManager().findViewByPosition(0);
+            if (first != null) first.requestFocus();
+        });
+    }
+
     // ---- navigation ------------------------------------------------------------------------------
 
     @Override
@@ -1655,7 +1762,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         } else {
             int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
             if (position >= lastRowStart) {
+                // The news row lives below the whole grid: last row down, or the library button
+                // down, lands on the first headline when the row is on screen.
                 if (adapter.isLibraryAt(count)) focusLibrary();
+                else focusNews();
                 return true;
             }
             target = Math.min(position + COLUMNS, count - 1);
@@ -1677,6 +1787,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (adapter.appCount() == 0) { btnWifi.requestFocus(); return; }
         int lastRow = ((adapter.appCount() - 1) / COLUMNS) * COLUMNS;
         focusTile(Math.min(lastRow + lastFocused % COLUMNS, adapter.appCount() - 1));
+    }
+
+    @Override public void onLibraryDown() {
+        focusNews();
     }
 
     private void focusLibrary() {
@@ -2298,6 +2412,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
         addSettingsMenuRow(rows, popup, R.string.input_cards, () -> startActivityForResult(
                 new Intent(this, InputCardsActivity.class), LAUNCHER_SETTINGS_REQUEST));
+        addSettingsMenuRow(rows, popup, R.string.news_settings_title, () -> startActivityForResult(
+                new Intent(this, NewsSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
+        addSettingsMenuRow(rows, popup, R.string.news_full, () -> {
+            if (NewsFeed.cached(this).isEmpty()) {
+                Toast.makeText(this, R.string.news_empty, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            startActivity(new Intent(this, NewsFullActivity.class));
+        });
         if (moduleCards) addSettingsMenuRow(rows, popup, R.string.module_cards, this::showModuleCards);
         if (dockRow) addSettingsMenuRow(rows, popup, R.string.dock_edit, this::startDockEdit);
         addSettingsMenuRow(rows, popup, R.string.reorder, this::toggleReorder);

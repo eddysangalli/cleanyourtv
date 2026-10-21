@@ -366,6 +366,20 @@
                 android:scrollbars="none"
                 android:descendantFocusability="afterDescendants" />
         </FrameLayout>
+
+        <!-- News row (news_enabled): the owner's RSS sources mixed round-robin, one headline a
+             card; gone until headlines arrive (NewsFeed), so the grid takes the space back. -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/newsRow"
+            android:layout_width="match_parent"
+            android:layout_height="132dp"
+            android:layout_marginTop="6dp"
+            android:paddingBottom="16dp"
+            android:clipToPadding="false"
+            android:clipChildren="false"
+            android:overScrollMode="never"
+            android:scrollbars="none"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- The single floating glass highlight that springs between tiles. -->
