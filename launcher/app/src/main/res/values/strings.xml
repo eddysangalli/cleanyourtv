@@ -52,6 +52,18 @@
     <string name="on">On</string>
     <string name="off">Off</string>
     <string name="enable">Enable</string>
+    <!-- HDMI/AV cards (InputCards, InputCardsActivity): the owner names an input and picks its icon. -->
+    <string name="input_cards">Input cards</string>
+    <string name="input_card_name">Name: %1$s</string>
+    <string name="input_card_name_default">Same as the input</string>
+    <string name="input_card_icon">Icon: %1$s</string>
+    <string name="input_card_icon_title">Icon</string>
+    <string name="input_card_shown">Show on Home: %1$s</string>
+    <string name="card_name_title">Card name</string>
+    <string name="icon_game">Game</string>
+    <string name="icon_movie">Movie</string>
+    <string name="icon_music">Music</string>
+    <string name="icon_computer">Computer</string>
     <string name="input_key_service_description">Opens the input switcher when the remote\'s Input button is pressed.</string>
     <string name="home_key_name">Home button</string>
     <string name="home_key_description">Makes the remote\'s Home button open this launcher.</string>

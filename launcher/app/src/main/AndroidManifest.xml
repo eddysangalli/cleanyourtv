@@ -68,6 +68,12 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:screenOrientation="landscape" />
+        <!-- HDMI/AV cards (name, icon, shown): one block per input, saved at once (InputCards). -->
+        <activity
+            android:name=".InputCardsActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:screenOrientation="landscape" />
         <!-- Remote Settings button panel (settings_key_panel); own task so the app behind stays put. -->
         <activity
             android:name=".QuickSettingsActivity"

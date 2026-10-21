@@ -56,10 +56,13 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         void onLibraryRequested();
         void onLibraryFocused();
         void onLibraryUp();
+
+        /** Opens the input an INPUT tile points at (an HDMI/AV card, see InputCards). */
+        void onInputRequested(String inputId);
     }
 
     static final class Entry {
-        static final int APP = 0, HOME_SETTINGS = 1, CARD = 2, EMPTY = 3;
+        static final int APP = 0, HOME_SETTINGS = 1, CARD = 2, EMPTY = 3, INPUT = 4;
 
         final int kind;
         final String label;
@@ -71,12 +74,19 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         final String name;
         /** Ambient glow colour; 0 until sampled from the banner, or the card's accent from the start. */
         int ambient;
+        /** TvInputInfo id for INPUT tiles (an HDMI/AV card), else null. */
+        final String inputId;
 
         Entry(String label, ComponentName component, Drawable banner, Drawable icon) {
             this(APP, label, component, banner, icon, null, 0);
         }
 
         Entry(int kind, String label, ComponentName component, Drawable banner, Drawable icon, String caption, int accent) {
+            this(kind, label, component, banner, icon, caption, accent, null);
+        }
+
+        Entry(int kind, String label, ComponentName component, Drawable banner, Drawable icon,
+              String caption, int accent, String inputId) {
             this.kind = kind;
             this.label = label;
             this.component = component;
@@ -85,6 +95,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             this.icon = icon;
             this.name = caption == null ? label : label + " \u00B7 " + caption;
             this.ambient = accent;
+            this.inputId = inputId;
         }
     }
 
@@ -196,6 +207,13 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     /** Tile names and bundled banners that replace the app's own (config.xml, app_labels and app_banners). */
     private final Map<String, String> appLabels, appBanners;
     private final List<Entry> items = new ArrayList<>();
+    /** Input cards (HDMI/AV) resolved by the activity; empty = none shown. */
+    private List<InputCards> inputCards = Collections.emptyList();
+
+    /** The owner's shown input cards, ready for the next reload() (MainActivity.resolveInputCards). */
+    void setInputCards(List<InputCards> cards) {
+        this.inputCards = cards == null ? Collections.emptyList() : cards;
+    }
 
     AppAdapter(Context ctx, TileListener listener, int dockSize, Config cfg) {
         this.ctx = ctx;
@@ -270,6 +288,13 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                 fresh.add(new Entry(label, component, banner, icon));
             }
         }
+        // The owner's input cards (HDMI/AV) sit with the cards, after the dock apps: an id can hold a
+        // slash, so the component uses a sanitized copy to stay a valid, unique key for stable ids.
+        for (InputCards card : inputCards) {
+            fresh.add(new Entry(Entry.INPUT, card.displayLabel,
+                    new ComponentName("com.gathin.tvhome.input", card.inputId.replace('/', '.')), null,
+                    ctx.getDrawable(InputCards.iconRes(card.icon)), card.caption, 0, card.inputId));
+        }
         Collections.sort(fresh, (a, b) -> {
             // The owner's own order first; tiles it does not know (new installs) follow by the rule below.
             int saved = Order.compare(savedRanks, a.component.flattenToShortString(), b.component.flattenToShortString());
@@ -280,8 +305,9 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
                 if (fb < 0) return -1;
                 return Integer.compare(fa, fb);
             }
-            // Cards come right after the configured dock apps, before the alphabetical grid.
-            boolean ca = a.kind == Entry.CARD, cb = b.kind == Entry.CARD;
+            // Cards and input cards come right after the configured dock apps, before the alphabetical grid.
+            boolean ca = a.kind == Entry.CARD || a.kind == Entry.INPUT,
+                    cb = b.kind == Entry.CARD || b.kind == Entry.INPUT;
             if (ca != cb) return ca ? -1 : 1;
             return a.label.compareToIgnoreCase(b.label);
         });
@@ -419,15 +445,20 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             h.label.setVisibility(View.VISIBLE);
         }
         h.card.setOnClickListener(v -> launch(e));
-        h.card.setOnLongClickListener(v -> {
-            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + e.pkg));
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            try {
-                ctx.startActivity(i);
-            } catch (ActivityNotFoundException ignored) {
-            }
-            return true;
-        });
+        // An input card has no app page behind it; hold on it does nothing.
+        if (e.kind == Entry.INPUT) {
+            h.card.setOnLongClickListener(null);
+        } else {
+            h.card.setOnLongClickListener(v -> {
+                Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + e.pkg));
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                try {
+                    ctx.startActivity(i);
+                } catch (ActivityNotFoundException ignored) {
+                }
+                return true;
+            });
+        }
     }
 
     /** Opens the tile's activity by explicit component, with no extras: a card can name nothing else. */
@@ -435,6 +466,11 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         if (e.kind == Entry.HOME_SETTINGS) {
             ctx.startActivity(new Intent(ctx, HomeSettingsActivity.class)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return;
+        }
+        if (e.kind == Entry.INPUT) {
+            // The activity switches to the input (the same path as the Inputs pill).
+            listener.onInputRequested(e.inputId);
             return;
         }
         Intent i = new Intent(Intent.ACTION_MAIN)

@@ -97,6 +97,18 @@
     <string name="on">Ligado</string>
     <string name="off">Desligado</string>
     <string name="enable">Ativar</string>
+    <!-- Cards HDMI/AV (InputCards, InputCardsActivity): o utilizador nomeia uma entrada e escolhe o ícone. -->
+    <string name="input_cards">Cards de entrada</string>
+    <string name="input_card_name">Nome: %1$s</string>
+    <string name="input_card_name_default">Igual ao da entrada</string>
+    <string name="input_card_icon">Ícone: %1$s</string>
+    <string name="input_card_icon_title">Ícone</string>
+    <string name="input_card_shown">Mostrar no início: %1$s</string>
+    <string name="card_name_title">Nome do card</string>
+    <string name="icon_game">Jogo</string>
+    <string name="icon_movie">Filme</string>
+    <string name="icon_music">Música</string>
+    <string name="icon_computer">Computador</string>
     <string name="race_kicker">Ronda %1$d · %2$s · %3$s</string>
     <string name="race_kicker_no_place">Ronda %1$d · %2$s</string>
     <string name="race_next">%1$s em %2$s</string>

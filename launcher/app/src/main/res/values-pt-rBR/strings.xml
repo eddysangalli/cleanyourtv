@@ -51,6 +51,18 @@
     <string name="on">Ligado</string>
     <string name="off">Desligado</string>
     <string name="enable">Ativar</string>
+    <!-- Cards HDMI/AV (InputCards, InputCardsActivity): renomeie a entrada e escolha o ícone. -->
+    <string name="input_cards">Cards de entrada</string>
+    <string name="input_card_name">Nome: %1$s</string>
+    <string name="input_card_name_default">Igual ao da entrada</string>
+    <string name="input_card_icon">Ícone: %1$s</string>
+    <string name="input_card_icon_title">Ícone</string>
+    <string name="input_card_shown">Mostrar na tela inicial: %1$s</string>
+    <string name="card_name_title">Nome do card</string>
+    <string name="icon_game">Jogo</string>
+    <string name="icon_movie">Filme</string>
+    <string name="icon_music">Música</string>
+    <string name="icon_computer">Computador</string>
     <string name="input_key_service_description">Abre o seletor de entradas quando o botão Input do controle é pressionado.</string>
     <string name="home_key_name">Botão Home</string>
     <string name="home_key_description">Faz o botão Home do controle abrir este launcher.</string>

@@ -676,6 +676,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         heroArtCache.clear();
         heroArtKey = null;
         cards = moduleCards ? CardFeature.run(() -> Cards.discover(this, hiddenApps, Cards.load(Cards.storeFile(this))), none) : none;
+        adapter.setInputCards(resolveInputCards());
         adapter.reload(cards.isEmpty() ? none : CardFeature.run(() -> Cards.shown(cards), none));
         lastFocusedKey = returnKey;
         lastFocused = returnSlot;
@@ -2062,6 +2063,25 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         open(new Intent(inputAction).setDataAndType(uri, "vnd.android.cursor.item/channel"));
     }
 
+    /** The owner's shown input cards, resolved against the inputs the TV reports right now. */
+    private List<InputCards> resolveInputCards() {
+        Map<String, InputCards> saved = InputCards.load(
+                getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE));
+        if (saved.isEmpty()) return Collections.emptyList();
+        List<InputCards> out = new ArrayList<>();
+        for (TvInputInfo info : InputCards.cardInputs(this)) {
+            InputCards card = saved.get(info.getId());
+            if (card != null && card.shown) out.add(card.resolved(InputCards.portLabel(this, info)));
+        }
+        return out;
+    }
+
+    /** An input card was chosen: switch to that HDMI/AV input (the same path as the Inputs pill). */
+    @Override
+    public void onInputRequested(String inputId) {
+        openInput(inputId);
+    }
+
     /** Dropdown menu under the Inputs pill: HDMI ports (with connection state), AV and Live TV. */
     private void showInputs() {
         // A configured source panel and no Live TV row to offer next to it: the panel is the whole menu.
@@ -2276,6 +2296,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         PopupWindow popup = glassPopup(panel, (int) (200 * density));
         addSettingsMenuRow(rows, popup, R.string.launcher_settings, () -> startActivityForResult(
                 new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
+        addSettingsMenuRow(rows, popup, R.string.input_cards, () -> startActivityForResult(
+                new Intent(this, InputCardsActivity.class), LAUNCHER_SETTINGS_REQUEST));
         if (moduleCards) addSettingsMenuRow(rows, popup, R.string.module_cards, this::showModuleCards);
         if (dockRow) addSettingsMenuRow(rows, popup, R.string.dock_edit, this::startDockEdit);
         addSettingsMenuRow(rows, popup, R.string.reorder, this::toggleReorder);
