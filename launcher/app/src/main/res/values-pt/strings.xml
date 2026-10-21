@@ -124,6 +124,15 @@
     <string name="news_uol">UOL</string>
     <string name="news_folha">Folha</string>
     <string name="news_sul21">Sul21 (Porto Alegre)</string>
+    <!-- Início cinematográfico (news_cinema): a fotografia da notícia atrás de todo o ecrã. -->
+    <string name="news_cinema">Fotografia de fundo: %1$s</string>
+    <string name="news_rotate">Rodar manchetes em repouso: %1$s</string>
+    <string name="news_refresh">Atualizar notícias a cada: %1$d min</string>
+    <string name="news_image_age">Guardar fotos durante: %1$d h</string>
+    <!-- Camada 2 do Início cinematográfico: a linha de data e atalho sob a manchete. -->
+    <!-- Camada 2 do Início cinematográfico (news_cinema): a linha de data e atalho sob a manchete. -->
+    <string name="news_meta">%1$s · %2$s</string>
+    <string name="news_open_hint">Pressione OK para abrir</string>
     <string name="race_kicker">Ronda %1$d · %2$s · %3$s</string>
     <string name="race_kicker_no_place">Ronda %1$d · %2$s</string>
     <string name="race_next">%1$s em %2$s</string>

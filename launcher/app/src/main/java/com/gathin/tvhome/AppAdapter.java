@@ -57,7 +57,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         void onLibraryFocused();
         void onLibraryUp();
 
-        /** The library button's Down: below it lives the news row, when that row is on screen. */
+        /** The library button's Down: the last row is the end of the page; the news carousel lives above the dock. */
         void onLibraryDown();
 
         /** Opens the input an INPUT tile points at (an HDMI/AV card, see InputCards). */

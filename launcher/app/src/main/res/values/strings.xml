@@ -79,6 +79,15 @@
     <string name="news_uol">UOL</string>
     <string name="news_folha">Folha</string>
     <string name="news_sul21">Sul21 (Porto Alegre)</string>
+    <!-- Cinematic Home (news_cinema): the focused headline's photo behind the whole screen. -->
+    <string name="news_cinema">Photo background: %1$s</string>
+    <string name="news_rotate">Rotate headlines when idle: %1$s</string>
+    <string name="news_refresh">Refresh news every: %1$d min</string>
+    <string name="news_image_age">Keep photos for: %1$d h</string>
+    <!-- Layer 2 of the cinematic Home: the meta line under the headline. -->
+    <!-- Layer 2 of the cinematic Home (news_cinema): the meta line under the headline. -->
+    <string name="news_meta">%1$s · %2$s</string>
+    <string name="news_open_hint">Press OK to open</string>
     <string name="input_key_service_description">Opens the input switcher when the remote\'s Input button is pressed.</string>
     <string name="home_key_name">Home button</string>
     <string name="home_key_description">Makes the remote\'s Home button open this launcher.</string>

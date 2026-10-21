@@ -78,6 +78,15 @@
     <string name="news_uol">UOL</string>
     <string name="news_folha">Folha</string>
     <string name="news_sul21">Sul21 (Porto Alegre)</string>
+    <!-- Início cinematográfico (news_cinema): a fotografia da notícia atrás de toda a tela. -->
+    <string name="news_cinema">Fotografia de fundo: %1$s</string>
+    <string name="news_rotate">Girar manchetes quando ocioso: %1$s</string>
+    <string name="news_refresh">Atualizar notícias a cada: %1$d min</string>
+    <string name="news_image_age">Manter fotos por: %1$d h</string>
+    <!-- Camada 2 do Início cinematográfico: a linha de data e atalho sob a manchete. -->
+    <!-- Camada 2 do Início cinematográfico (news_cinema): a linha de data e atalho sob a manchete. -->
+    <string name="news_meta">%1$s · %2$s</string>
+    <string name="news_open_hint">Pressione OK para abrir</string>
     <string name="input_key_service_description">Abre o seletor de entradas quando o botão Input do controle é pressionado.</string>
     <string name="home_key_name">Botão Home</string>
     <string name="home_key_description">Faz o botão Home do controle abrir este launcher.</string>
