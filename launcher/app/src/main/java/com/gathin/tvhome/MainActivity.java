@@ -10,6 +10,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -104,6 +105,33 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private AppAdapter adapter;
     private RecyclerView grid;
+    /** The RSS carousel at the top of Home (news_hero): the featured headline as a hero banner. */
+    private View newsCarousel;
+    /** Its photo stage (news_cinema): the lead photo over a colour derived from the headline. */
+    private NewsBackdropView newsBackdrop;
+    /** Its words (kicker, headline, summary, meta) and its position dots. */
+    private View newsText;
+    private TextView newsKicker, newsHeadline, newsSummary, newsMeta;
+    private LinearLayout newsDots;
+    /** The page's top: header and carousel together, which the grid's scroll carries as one page. */
+    private View newsBlock;
+    /** The header alone, so the carousel knows where the free shelf space begins. */
+    private View header;
+    /** The headlines behind the carousel, and which one it is currently showing. */
+    private List<NewsFeed.Headline> newsHeadlines = new ArrayList<>();
+    private int newsIndex = -1;
+    /** Optional gentle rotation (news_rotate), paused the whole time the owner is using the remote. */
+    private final Handler newsRotate = new Handler(Looper.getMainLooper());
+    private final Runnable newsRotateStep = this::rotateNews;
+    private static final long NEWS_ROTATE_MS = 20 * 1000;
+    /** The photo background (news_cinema): off keeps the carousel's words and drops the photo. */
+    private boolean cinema = true;
+    /** The shelf geometry updateShelfLayout() parks the dock with (mirrored from the config). */
+    private int rowsBelowDock;
+    private boolean dockTitle, appLibraryEnabled;
+    /** The full-screen news as a screen saver (news_idle): fires once the remote has been idle. */
+    private final Handler newsIdle = new Handler(Looper.getMainLooper());
+    private final Runnable newsIdleStart = this::startNewsScreensaver;
     private FrameLayout root;
     private WallpaperPlayer wallpaperPlayer;
     private GlassView glass;
@@ -132,6 +160,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private View btnInputs;
     private View btnVoice;
     private TextView btnWifi;
+    /** Each pill's word, shown beside the icon only while the pill has focus (news_hero's compact bar). */
+    private TextView lblInputs, lblWifi, lblSettings;
     private TextView shamsiDate;
     private TextView stats;
     private List<RaceWeekend.Race> raceCalendar;
@@ -407,38 +437,47 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         adapter.setSavedOrder(Order.ranks(Order.load(Order.file(this)), dockApps));
         grid.setAdapter(adapter);
 
-        // tvOS layout: push the dock row towards the bottom of the screen, leaving room for
-        // rows_below_dock grid rows under it; the rest of the grid stays below until you press Down.
-        int rowsBelowDock = cfg.rowsBelowDock;
-        grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-            int h = b - t;
-            // Item height follows the tile size, which follows the columns and the rows that must fit (AppAdapter.tileWidthPx).
-            int inner = (r - l) - grid.getPaddingLeft() - grid.getPaddingRight();
-            int tileW = AppAdapter.tileWidthPx(inner, h, COLUMNS, rowsBelowDock, cfg.dockTitle, cfg.dockRow, density);
-            int itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(tileW), density);
-            int dockRow = itemH + (int) (AppAdapter.DOCK_EXTRA_DP * density);   // item height plus DockDecoration offsets
-            int gridRows = itemH * rowsBelowDock;
-            // Keep the hero below the header when the library is enabled on a short screen,
-            // even when the theme requests an extra visible row below the dock.
-            int shelfClearance = cfg.appLibrary ? hero.getMeasuredHeight() + (int) (40 * density) : 0;
-            int want = Math.max(shelfClearance, h - dockRow - gridRows - (int) (AppAdapter.BOTTOM_ROOM_DP * density));
-            // Where the rows cannot fit even at the smallest tile (3 rows with the title on), the title keeps its
-            // room above the dock and the last rows run off the bottom instead of the title drawing over the clock.
-            if (MainActivity.this.dockRow && cfg.dockTitle && rowsBelowDock > 0) want = Math.max(want, (int) (AppAdapter.TITLE_ROOM_DP * density));
-            // No dock to push down: the grid starts at the top, with room for the first row's zoom and glass.
-            if (!MainActivity.this.dockRow) want = (int) (AppAdapter.TOP_ROOM_DP * density);
-            if (grid.getPaddingTop() != want) {
-                grid.setPadding(grid.getPaddingLeft(), want, grid.getPaddingRight(), grid.getPaddingBottom());
+        // The RSS carousel (news_hero): the featured headline at the top of Home. It stays gone
+        // until headlines arrive (NewsFeed), so an RSS-off Home draws none of it and keeps its
+        // own layout: no photo, no thread, no timers, nothing.
+        newsCarousel = findViewById(R.id.newsCarousel);
+        newsBackdrop = findViewById(R.id.newsBackdrop);
+        newsText = findViewById(R.id.newsText);
+        newsKicker = findViewById(R.id.newsKicker);
+        newsHeadline = findViewById(R.id.newsHeadline);
+        newsSummary = findViewById(R.id.newsSummary);
+        newsMeta = findViewById(R.id.newsMeta);
+        newsDots = findViewById(R.id.newsDots);
+        newsBlock = findViewById(R.id.newsBlock);
+        header = findViewById(R.id.header);
+        newsBackdrop.setReducedMotion(reducedMotion);
+        newsCarousel.setOnKeyListener(this::onCarouselKey);
+        newsCarousel.setOnClickListener(v -> openCurrentNews());
+        // Focus on the carousel clears the grid's highlight and shelf, like the library button
+        // does, and rings the banner; Left and Right on it move through the stories.
+        newsCarousel.setOnFocusChangeListener((view, focused) -> {
+            if (focused) {
+                hideGlass();
+                hideHero();
             }
-            // Cold start or column count > 4: the first focus can run before the grid has its final width or
-            // padding, leaving the glass at the XML design size until a key is pressed.
-            grid.post(this::refitGlass);
+            newsBackdrop.setFocused(focused);
         });
 
-        // Keep the glass glued to its tile while the grid scrolls.
+        // tvOS layout (news_hero): the grid owns the screen and parks the dock at its top padding,
+        // just below the header and the RSS carousel; the rest of the grid stays below until you
+        // press Down. The carousel fills the shelf space the dock line leaves above it, so the dock
+        // keeps exactly the position it has without the news, and the grid scrolls the whole page.
+        rowsBelowDock = cfg.rowsBelowDock;
+        dockTitle = cfg.dockTitle;
+        appLibraryEnabled = cfg.appLibrary;
+        grid.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> updateShelfLayout());
+
+        // Keep the glass glued to its tile while the grid scrolls, and carry the page's top
+        // (header + carousel) along with the scroll: the joint scroll of the carousel Home.
         grid.addOnScrollListener(new RecyclerView.OnScrollListener() {
             @Override
             public void onScrolled(@NonNull RecyclerView rv, int dx, int dy) {
+                syncNewsBlock();
                 if (!glassShown) return;
                 glassTargetY -= dy;
                 glassScrollShift -= dy;
@@ -501,8 +540,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
             if (keyCode == KeyEvent.KEYCODE_DPAD_UP) return true;
             if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                // Back to the dock tile Up came from, not wherever the focus finder lands.
-                focusTile(lastFocused % COLUMNS);
+                // To the carousel (news_hero), or back to the dock tile Up came from without the news.
+                if (carouselVisible()) focusCarousel();
+                else focusTile(lastFocused % COLUMNS);
                 return true;
             }
             int firstButton = btnInputs.getVisibility() == View.VISIBLE ? R.id.btnInputs
@@ -524,6 +564,14 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                         .setDuration(160).start());
             }
         }
+        // Icon-only pills: each one's word eases in beside it while the pill has focus, so the bar
+        // under the clock stays compact (news_hero took the space below for the carousel).
+        lblInputs = findViewById(R.id.lblInputs);
+        lblWifi = findViewById(R.id.lblWifi);
+        lblSettings = findViewById(R.id.lblSettings);
+        showLabelOnFocus(btnInputs, lblInputs);
+        showLabelOnFocus(btnWifi, lblWifi);
+        showLabelOnFocus(btnSettings, lblSettings);
         if (festive) applyFestiveSkin((TextView) btnInputs, (TextView) btnSettings);
 
         // Hide the glass when focus leaves the tiles.
@@ -569,6 +617,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (openLauncherSettingsIfAsked(intent)) return;
         if (intent == null || !intent.hasCategory(Intent.CATEGORY_HOME)) return;
         grid.scrollToPosition(0);
+        grid.post(this::syncNewsBlock);   // the page's top returns with the scroll
         lastFocused = 0;
         lastFocusedKey = adapter.getItemCount() > 0 ? adapter.keyAt(0) : null;
         rebuildOnResume = true;
@@ -602,6 +651,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         updateRace();
         updateWifiLabel();
         updateInputsButton();
+        refreshNews();
+        bumpNewsIdle();          // the screen-saver clock starts from the moment Home is in front.
         if (showStats) startStats();
         sky.update();
         wallpaperPlayer.start();
@@ -620,6 +671,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == LAUNCHER_SETTINGS_REQUEST && resultCode == RESULT_OK) recreate();
+    }
+
+    /** Every key and touch restarts the screen-saver clock; the news only takes over when left alone. */
+    @Override
+    public void onUserInteraction() {
+        super.onUserInteraction();
+        bumpNewsIdle();
     }
 
     /** Rebuilds the tiles (and the module cards), then puts focus back where it was. */
@@ -709,6 +767,9 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         ambient.animate().cancel();
         heroArt.animate().cancel();
         handler.removeCallbacks(minuteTick);
+        newsIdle.removeCallbacks(newsIdleStart);   // no screen saver over another app.
+        newsRotate.removeCallbacks(newsRotateStep);
+        newsBackdrop.release();               // the backdrop's bitmaps go back when Home is not in front
         stopStats();
         if (diya != null) diya.stop();
         cancelPendingFocusScroll();
@@ -1150,8 +1211,22 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     // ---- top shelf -------------------------------------------------------------------------------
 
     private void showHero(int position, float dockTopInRoot) {
-        String label = adapter.labelAt(position);
         int color = adapter.ambientColorAt(position);
+        if (carouselVisible()) {
+            // The RSS carousel owns the shelf's space (news_hero): only the colour glow follows
+            // the dock, and the big name never draws over the banner.
+            stopAmbientAnimation();
+            hero.animate().cancel();
+            ambient.animate().cancel();
+            heroArt.animate().cancel();
+            hero.setAlpha(0f);
+            heroArt.setAlpha(0f);
+            heroShown = false;
+            setAmbient(color);
+            ambient.setAlpha(1f);
+            return;
+        }
+        String label = adapter.labelAt(position);
         float y = dockTopInRoot - 14 * density - 26 * density - hero.getHeight();
         boolean changed = !label.contentEquals(heroName.getText());
         if (cinematic) showHeroArt(position);
@@ -1630,6 +1705,324 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 : String.format(Locale.US, "%.1f GB", gb);
     }
 
+    // ---- news ----------------------------------------------------------------------------------
+
+    /** How long the remote may lie untouched before the full-screen news takes over as a screen saver. */
+    private static final long NEWS_IDLE_MS = 5 * 60 * 1000;
+
+    /**
+     * Restarts the screen-saver clock. Called on every key and touch, so the full-screen news only
+     * ever appears when nobody has used the TV for NEWS_IDLE_MS (news_idle).
+     */
+    private void bumpNewsIdle() {
+        newsIdle.removeCallbacks(newsIdleStart);
+        SharedPreferences choices = getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE);
+        if (choices.getBoolean("news_idle", true) && NewsFeed.enabled(this)) {
+            newsIdle.postDelayed(newsIdleStart, NEWS_IDLE_MS);
+        }
+        // Every key and touch also pauses the scene rotation: while the owner is navigating, the
+        // backdrop does not change under them (news_rotate).
+        bumpNewsRotation();
+    }
+
+    /** The screen saver itself: the cached front page, full screen, one headline at a time. */
+    private void startNewsScreensaver() {
+        if (isFinishing() || isDestroyed()) return;
+        if (NewsFeed.cached(this).isEmpty()) return;    // nothing to show: stay on Home.
+        startActivity(new Intent(this, NewsFullActivity.class));
+    }
+
+    /**
+     * Parks the dock just below the header and the RSS carousel (news_hero), and gives the carousel
+     * exactly the shelf space that leaves: the dock keeps the position it has without the news, the
+     * gap keeps the banner's rounded corner clear of the dock band, and the rows below scroll up
+     * into that space. Runs after every grid layout and whenever the carousel is shown or hidden;
+     * with no carousel every number here is the original launcher's.
+     */
+    private void updateShelfLayout() {
+        if (grid.getHeight() == 0) return;              // not laid out yet: the first layout runs this
+        int h = grid.getHeight();
+        int inner = grid.getWidth() - grid.getPaddingLeft() - grid.getPaddingRight();
+        // Item height follows the tile size, which follows the columns and the rows that must fit (AppAdapter.tileWidthPx).
+        int tileW = AppAdapter.tileWidthPx(inner, h, COLUMNS, rowsBelowDock, dockTitle, dockRow, density);
+        int itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(tileW), density);
+        int dockRowPx = itemH + (int) (AppAdapter.DOCK_EXTRA_DP * density);   // item height plus DockDecoration offsets
+        int gridRows = itemH * rowsBelowDock;
+        // Keep the hero below the header when the library is enabled on a short screen,
+        // even when the theme requests an extra visible row below the dock.
+        int shelfClearance = appLibraryEnabled ? hero.getMeasuredHeight() + (int) (40 * density) : 0;
+        int want = Math.max(shelfClearance, h - dockRowPx - gridRows - (int) (AppAdapter.BOTTOM_ROOM_DP * density));
+        // Where the rows cannot fit even at the smallest tile (3 rows with the title on), the title keeps its
+        // room above the dock and the last rows run off the bottom instead of the title drawing over the clock.
+        if (dockRow && dockTitle && rowsBelowDock > 0) want = Math.max(want, (int) (AppAdapter.TITLE_ROOM_DP * density));
+        // The carousel takes the shelf space between the header and the dock line. The grid lays out
+        // before the block, so the header's bottom is 0 on the very first pass: fall back to its
+        // measured height, which the measure pass has already produced by then.
+        int carouselTop = header.getBottom() > 0 ? header.getBottom()
+                : newsBlock.getPaddingTop() + header.getMeasuredHeight();
+        int gap = (int) (14 * density);
+        int carouselH = carouselVisible() && carouselTop + gap < want ? want - carouselTop - gap : 0;
+        if (carouselH > 0 && rowsBelowDock > 0) {
+            // The carousel costs the tiles height: size them again on the space that is left.
+            tileW = AppAdapter.tileWidthPx(inner, h - carouselH, COLUMNS, rowsBelowDock, dockTitle, dockRow, density);
+            itemH = AppAdapter.itemHeightPx(AppAdapter.tileHeightPx(tileW), density);
+            dockRowPx = itemH + (int) (AppAdapter.DOCK_EXTRA_DP * density);
+            gridRows = itemH * rowsBelowDock;
+            want = Math.max(shelfClearance, h - dockRowPx - gridRows - (int) (AppAdapter.BOTTOM_ROOM_DP * density));
+            carouselH = Math.max(0, Math.min(carouselH, want - carouselTop - gap));
+        }
+        // No dock to push down: the grid starts at the top, with room for the first row's zoom and
+        // glass; with the carousel on, it starts below the banner instead.
+        if (!dockRow) want = Math.max((int) (AppAdapter.TOP_ROOM_DP * density), carouselH > 0 ? carouselTop + carouselH + gap : 0);
+        // The carousel always keeps its room above the dock line (the RSS-off dock keeps its place).
+        if (carouselH > 0) want = Math.max(want, carouselTop + carouselH + gap);
+        // This runs from the grid's layout listener, inside the layout pass: mutating LayoutParams or
+        // padding right there is dropped by ViewRootImpl (its requestLayout is swallowed mid-layout),
+        // which left the carousel stretched at wrap_content until some unrelated later requestLayout
+        // (the next fetch or a key) happened to fire. Apply one frame later, outside the pass; the
+        // values are computed now, so nothing moves twice and a repeated call is a no-op.
+        final int applyPad = want;
+        final int applyCarouselH = carouselH;
+        grid.post(() -> applyShelfLayout(applyPad, applyCarouselH));
+        // Cold start or column count > 4: the first focus can run before the grid has its final width or
+        // padding, leaving the glass at the XML design size until a key is pressed.
+        grid.post(this::refitGlass);
+        grid.post(this::syncNewsBlock);
+    }
+
+    /** Writes the shelf measurements computed by {@link #updateShelfLayout()}, off the layout pass. */
+    private void applyShelfLayout(int padTop, int carouselH) {
+        ViewGroup.LayoutParams carouselLp = newsCarousel.getLayoutParams();
+        if (carouselLp.height != carouselH) {
+            carouselLp.height = carouselH;
+            newsCarousel.setLayoutParams(carouselLp);
+        }
+        if (grid.getPaddingTop() != padTop) {
+            grid.setPadding(grid.getPaddingLeft(), padTop, grid.getPaddingRight(), grid.getPaddingBottom());
+            // The tiles moved under the highlight without a scroll: make refitGlass put it back.
+            glassShown = false;
+        }
+    }
+
+    /**
+     * The carousel: cached headlines at once, the network only in the background, never blocking.
+     * With the news off (news_enabled) this hides everything it owns and returns: no cache read, no
+     * thread, no timers, no photo, nothing drawn. The Home is exactly what it was before the feature
+     * existed, which is the promise made to an owner who never turned it on.
+     */
+    private void refreshNews() {
+        if (!NewsFeed.enabled(this)) {
+            hideNewsScene();
+            return;
+        }
+        cinema = getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE)
+                .getBoolean("news_cinema", true);
+        List<NewsFeed.Headline> cached = NewsFeed.cached(this);
+        if (!cached.isEmpty()) showNews(cached);
+        else hideNewsScene();
+        if (NewsFeed.stale(this)) NewsFeed.fetch(this, this::showNews);
+        bumpNewsRotation();
+    }
+
+    private void showNews(List<NewsFeed.Headline> headlines) {
+        if (headlines.isEmpty()) {
+            hideNewsScene();
+            return;
+        }
+        newsHeadlines = headlines;
+        // A refresh must not move the owner: keep the carousel on the headline that was already
+        // showing, and only fall back to the first one when that headline disappeared.
+        if (newsIndex < 0 || newsIndex >= headlines.size()) newsIndex = 0;
+        if (newsCarousel.getVisibility() != View.VISIBLE) {
+            newsCarousel.setVisibility(View.VISIBLE);
+            updateShelfLayout();           // the dock line gives the carousel its space
+        }
+        rebuildNewsDots();
+        showScene(newsIndex);
+        syncNewsBlock();
+    }
+
+    /** Makes one headline the scene: photo, words and dots, in place. */
+    private void showScene(int position) {
+        if (position < 0 || position >= newsHeadlines.size()) return;
+        newsIndex = position;
+        NewsFeed.Headline headline = newsHeadlines.get(position);
+        // The photo behind the words (news_cinema); with it off, the carousel is words over black.
+        if (cinema) {
+            if (newsBackdrop.getVisibility() != View.VISIBLE) newsBackdrop.setVisibility(View.VISIBLE);
+            newsBackdrop.show(headline, animations);
+        } else {
+            newsBackdrop.setVisibility(View.GONE);
+            newsBackdrop.release();
+        }
+        // Some feeds (G1 among them) tag every item with the source itself, so repeating the
+        // category there would read "G1 / G1"; it only earns its place when it adds something.
+        String kicker = headline.category.isEmpty()
+                || headline.category.equalsIgnoreCase(headline.source)
+                ? headline.source
+                : headline.source + "  ·  " + headline.category;
+        newsKicker.setText(kicker);
+        newsHeadline.setText(headline.title);
+        // The summary is optional; a headline with none simply shows the title and the meta.
+        if (headline.summary.isEmpty() || headline.summary.equals(headline.title)) {
+            newsSummary.setVisibility(View.GONE);
+        } else {
+            newsSummary.setVisibility(View.VISIBLE);
+            newsSummary.setText(headline.summary);
+        }
+        newsMeta.setText(headline.published > 0
+                ? getString(R.string.news_meta,
+                        android.text.format.DateUtils.getRelativeTimeSpanString(headline.published,
+                                System.currentTimeMillis(),
+                                android.text.format.DateUtils.MINUTE_IN_MILLIS),
+                        getString(R.string.news_open_hint))
+                : getString(R.string.news_open_hint));
+        newsMeta.setVisibility(View.VISIBLE);
+        updateNewsDots();
+        newsCarousel.setContentDescription(kicker + ". " + headline.title);
+    }
+
+    /** Hides everything the carousel owns: nothing on screen, no memory held, the page back to normal. */
+    private void hideNewsScene() {
+        newsHeadlines = Collections.emptyList();
+        newsIndex = -1;
+        if (newsCarousel.getVisibility() == View.VISIBLE) {
+            newsCarousel.setVisibility(View.GONE);
+            updateShelfLayout();           // the dock line takes the carousel's space back
+        }
+        newsText.animate().cancel();
+        newsText.setAlpha(1f);              // back to normal for the next scene
+        newsBackdrop.setVisibility(View.GONE);
+        newsBackdrop.release();             // the photos go back to the pool, Home or not
+        newsBlock.setTranslationY(0f);      // the header is not carried anywhere without the news
+        racePanel.setTranslationY(0f);
+    }
+
+    private boolean carouselVisible() {
+        return newsCarousel != null && newsCarousel.getVisibility() == View.VISIBLE;
+    }
+
+    /** Moves focus to the carousel, when it is on screen with a story in it. */
+    private void focusCarousel() {
+        if (carouselVisible()) newsCarousel.requestFocus();
+    }
+
+    /** Left and Right move through the stories; Down goes to the dock; everything else falls through. */
+    private boolean onCarouselKey(View v, int keyCode, KeyEvent event) {
+        if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+                stepNews(-1);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+                stepNews(1);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                focusTile(lastFocused % COLUMNS);
+                return true;
+            case KeyEvent.KEYCODE_DPAD_UP:
+                return false;               // the focus search takes it to the top bar
+            default:
+                return false;
+        }
+    }
+
+    /** One story forward or back, wrapping around the ends, with the click the arrows give. */
+    private void stepNews(int delta) {
+        int n = newsHeadlines.size();
+        if (n == 0) return;
+        showScene(((newsIndex + delta) % n + n) % n);
+        grid.playSoundEffect(delta > 0
+                ? SoundEffectConstants.NAVIGATION_RIGHT : SoundEffectConstants.NAVIGATION_LEFT);
+    }
+
+    /** OK on the carousel: the featured article wherever the TV keeps a browser. */
+    private void openCurrentNews() {
+        if (newsIndex >= 0 && newsIndex < newsHeadlines.size()) openNews(newsHeadlines.get(newsIndex));
+    }
+
+    /**
+     * The joint scroll (news_hero): while the carousel is on, the header and the carousel ride the
+     * grid's scroll like one page — up and out through the top when the focus walks down the rows,
+     * back on screen when it returns up. Without the news nothing is translated: the header stays
+     * fixed over the grid exactly as it always was.
+     */
+    private void syncNewsBlock() {
+        float shift = carouselVisible() ? -Math.max(0, grid.computeVerticalScrollOffset()) : 0f;
+        newsBlock.setTranslationY(shift);
+        racePanel.setTranslationY(shift);
+    }
+
+    /** The dots are a position hint, not a list: with more stories than dots, several share one. */
+    private static final int MAX_DOTS = 12;
+
+    private void rebuildNewsDots() {
+        newsDots.removeAllViews();
+        int n = Math.min(MAX_DOTS, Math.max(1, newsHeadlines.size()));
+        int size = (int) (6 * density);
+        int gap = (int) (7 * density);
+        for (int i = 0; i < n; i++) {
+            View dot = new View(this);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(size, size);
+            if (i > 0) lp.setMarginStart(gap);
+            dot.setBackground(newsDotDrawable(i == dotOf(newsIndex)));
+            newsDots.addView(dot, lp);
+        }
+    }
+
+    /** Which dot stands for a headline when there are more stories than dots. */
+    private int dotOf(int position) {
+        int dots = newsDots.getChildCount();
+        int n = newsHeadlines.size();
+        if (dots <= 1 || n <= 1) return 0;
+        return Math.round((float) position * (dots - 1) / (n - 1));
+    }
+
+    private void updateNewsDots() {
+        if (newsDots.getChildCount() == 0) return;
+        int active = dotOf(newsIndex);
+        for (int i = 0; i < newsDots.getChildCount(); i++) {
+            newsDots.getChildAt(i).setBackground(newsDotDrawable(i == active));
+        }
+    }
+
+    private static android.graphics.drawable.GradientDrawable newsDotDrawable(boolean active) {
+        android.graphics.drawable.GradientDrawable dot = new android.graphics.drawable.GradientDrawable();
+        dot.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        dot.setColor(active ? 0xFFFFFFFF : 0x66FFFFFF);
+        return dot;
+    }
+
+    /**
+     * The optional gentle rotation (news_rotate): the scene advances through the cached headlines
+     * every NEWS_ROTATE_MS, and stops the moment the owner touches the remote (bumpNewsRotation is
+     * called on every key and touch). It never moves the row's selection or the focus, so it cannot
+     * take control away from anybody, and it never runs while the news is off.
+     */
+    private void bumpNewsRotation() {
+        newsRotate.removeCallbacks(newsRotateStep);
+        // Nothing to rotate between, or nowhere to rotate: with the news off there is no carousel.
+        if (!carouselVisible() || newsHeadlines.size() < 2) return;
+        SharedPreferences choices = getSharedPreferences(Config.SETTINGS_NAME, MODE_PRIVATE);
+        if (choices.getBoolean("news_rotate", true)) newsRotate.postDelayed(newsRotateStep, NEWS_ROTATE_MS);
+    }
+
+    private void rotateNews() {
+        if (newsHeadlines.size() < 2 || newsIndex < 0) return;
+        showScene((newsIndex + 1) % newsHeadlines.size());
+        newsRotate.postDelayed(newsRotateStep, NEWS_ROTATE_MS);
+    }
+
+    /** A news card opens its article wherever the TV keeps a browser. */
+    private void openNews(NewsFeed.Headline headline) {
+        if (headline.link.isEmpty()) return;
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(headline.link)));
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, getString(R.string.cant_open, headline.source), Toast.LENGTH_SHORT).show();
+        }
+    }
+
     // ---- navigation ------------------------------------------------------------------------------
 
     @Override
@@ -1650,11 +2043,19 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                     rtlAppGrid, keyCode == KeyEvent.KEYCODE_DPAD_LEFT);
         }
         if (keyCode == KeyEvent.KEYCODE_DPAD_UP) {
-            if (position < COLUMNS) return false;          // dock row: let focus move to the top bar
+            if (position < COLUMNS) {
+                // Dock row: the carousel sits between the dock and the top bar (news_hero).
+                if (carouselVisible()) {
+                    focusCarousel();
+                    return true;
+                }
+                return false;               // no news: let focus move to the top bar
+            }
             target = position - COLUMNS;
         } else {
             int lastRowStart = ((count - 1) / COLUMNS) * COLUMNS;
             if (position >= lastRowStart) {
+                // The last row is the end of the page; the carousel lives above the dock.
                 if (adapter.isLibraryAt(count)) focusLibrary();
                 return true;
             }
@@ -1677,6 +2078,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         if (adapter.appCount() == 0) { btnWifi.requestFocus(); return; }
         int lastRow = ((adapter.appCount() - 1) / COLUMNS) * COLUMNS;
         focusTile(Math.min(lastRow + lastFocused % COLUMNS, adapter.appCount() - 1));
+    }
+
+    @Override public void onLibraryDown() {
+        // The library footer is the end of the page; the carousel lives above the dock (news_hero).
     }
 
     private void focusLibrary() {
@@ -1897,8 +2302,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             // The pill has a maximum width and ellipsizes at the end, which would cut the badge off after
             // a long network name, so shorten the name to whatever room the badge leaves. The total paddings
             // include the Wi-Fi icon.
-            TextPaint paint = btnWifi.getPaint();
-            float room = btnWifi.getMaxWidth() - btnWifi.getTotalPaddingStart() - btnWifi.getTotalPaddingEnd()
+            TextPaint paint = lblWifi.getPaint();
+            float room = lblWifi.getMaxWidth() - lblWifi.getTotalPaddingStart() - lblWifi.getTotalPaddingEnd()
                     - span.getSize(paint, badge, 0, badge.length(), null) - paint.measureText(" ") - 2 * density;
             String name = TextUtils.ellipsize(text, paint, Math.max(0, room), TextUtils.TruncateAt.END).toString();
             // A long badge ("VPN отключён") can leave room for a stub like "MT…", which says nothing and, after
@@ -1907,10 +2312,13 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             text = name.length() < text.length() && name.length() < 5 ? "" : name;
             SpannableString label = new SpannableString(text + " " + badge);
             label.setSpan(span, text.length() + 1, label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-            btnWifi.setText(label);
+            lblWifi.setText(label);
         } else {
-            btnWifi.setText(text);
+            lblWifi.setText(text);
         }
+        // The pill itself is icon-only: the network's name lives in its word (shown on focus) and
+        // in what a screen reader announces.
+        btnWifi.setContentDescription(text);
         if (festive && diya != null) {
             if (online && flame == 0) flame = 3;   // online some other way (cellular, USB tethering)
             diya.setSteady(steady);
@@ -1952,6 +2360,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         view.setOnFocusChangeListener((v, focused) -> {
             if (previous != null) previous.onFocusChange(v, focused);
             if (focused) action.run();
+        });
+    }
+
+    /** Shows a pill's word beside its icon only while the pill has focus, keeping any listener it had. */
+    private void showLabelOnFocus(View pill, TextView label) {
+        View.OnFocusChangeListener previous = pill.getOnFocusChangeListener();
+        pill.setOnFocusChangeListener((v, focused) -> {
+            if (previous != null) previous.onFocusChange(v, focused);
+            label.setVisibility(focused ? View.VISIBLE : View.GONE);
         });
     }
 
@@ -2007,6 +2424,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             }
         }
         btnInputs.setVisibility(any ? View.VISIBLE : View.GONE);
+        if (!any && lblInputs != null) lblInputs.setVisibility(View.GONE);
     }
 
     /** The Live TV app's launch intent: its leanback entry point, or the configured action if it has none. */
@@ -2298,6 +2716,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
                 new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
         addSettingsMenuRow(rows, popup, R.string.input_cards, () -> startActivityForResult(
                 new Intent(this, InputCardsActivity.class), LAUNCHER_SETTINGS_REQUEST));
+        addSettingsMenuRow(rows, popup, R.string.news_settings_title, () -> startActivityForResult(
+                new Intent(this, NewsSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
+        addSettingsMenuRow(rows, popup, R.string.news_full, () -> {
+            if (NewsFeed.cached(this).isEmpty()) {
+                Toast.makeText(this, R.string.news_empty, Toast.LENGTH_SHORT).show();
+                return;
+            }
+            startActivity(new Intent(this, NewsFullActivity.class));
+        });
         if (moduleCards) addSettingsMenuRow(rows, popup, R.string.module_cards, this::showModuleCards);
         if (dockRow) addSettingsMenuRow(rows, popup, R.string.dock_edit, this::startDockEdit);
         addSettingsMenuRow(rows, popup, R.string.reorder, this::toggleReorder);

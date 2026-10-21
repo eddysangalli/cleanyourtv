@@ -32,7 +32,8 @@
 
     <!-- Race-weekend panel (a theme's race_calendar, see RaceWeekend): in the free space under the clock,
          shown only from shortly before a weekend's first session until the race is over. Updated once a
-         minute with the clock, never animated. -->
+         minute with the clock, never animated. It rides the same joint scroll as the header (news_hero),
+         and the RSS carousel draws over its space when both are on. -->
     <LinearLayout
         android:id="@+id/racePanel"
         android:layout_width="wrap_content"
@@ -103,7 +104,8 @@
         android:visibility="gone"
         android:importantForAccessibility="no" />
 
-    <!-- Top shelf: the focused dock app's name, positioned above the dock in code. -->
+    <!-- Top shelf: the focused dock app's name, positioned above the dock in code. With the RSS
+         carousel on, the carousel owns this space and the shelf stands aside (MainActivity). -->
     <LinearLayout
         android:id="@+id/hero"
         android:layout_width="wrap_content"
@@ -146,9 +148,29 @@
             android:visibility="gone" />
     </LinearLayout>
 
-    <LinearLayout
+    <!-- The grid owns the whole screen: its top padding parks the dock just below the header (and the
+         RSS carousel, news_hero), and every row below the dock scrolls up into that space. The header
+         and the carousel ride the scroll like one page, so the carousel leaves through the top with the
+         rest of the Home and comes back when the focus goes up again. -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/grid"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:paddingStart="56dp"
+        android:paddingEnd="56dp"
+        android:paddingBottom="40dp"
+        android:clipToPadding="false"
+        android:clipChildren="false"
+        android:overScrollMode="never"
+        android:scrollbars="none"
+        android:descendantFocusability="afterDescendants" />
+
+    <!-- The page's top: the header and, under it, the RSS carousel (news_hero). Drawn over the grid;
+         with the news off the carousel is gone and only the header remains, exactly as before. -->
+    <LinearLayout
+        android:id="@+id/newsBlock"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingStart="56dp"
         android:paddingEnd="56dp"
@@ -158,6 +180,7 @@
 
         <!-- No clipping down to the pills: with advanced effects a focused pill scales up past its row. -->
         <RelativeLayout
+            android:id="@+id/header"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:clipChildren="false"
@@ -295,6 +318,9 @@
                 android:focusable="false"
                 android:visibility="gone" />
 
+            <!-- Icon-only pills: each one's word sits beside it and appears only while the pill has
+                 focus (animateLayoutChanges eases the row aside), so the bar stays compact under the
+                 clock. The mic was already wordless. -->
             <LinearLayout
                 android:id="@+id/topButtons"
                 android:layout_width="wrap_content"
@@ -304,14 +330,20 @@
                 android:layout_marginBottom="6dp"
                 android:clipChildren="false"
                 android:clipToPadding="false"
+                android:animateLayoutChanges="true"
                 android:orientation="horizontal">
 
                 <TextView
                     android:id="@+id/btnInputs"
-                    style="@style/TopButton"
-                    android:text="@string/inputs"
+                    style="@style/TopButtonIcon"
+                    android:contentDescription="@string/inputs"
                     android:drawableStart="@drawable/ic_input"
                     android:nextFocusDown="@+id/grid" />
+
+                <TextView
+                    android:id="@+id/lblInputs"
+                    style="@style/TopButtonLabel"
+                    android:text="@string/inputs" />
 
                 <!-- Icon only: opens the existing Google Assistant (ACTION_ASSIST), no second listener. -->
                 <TextView
@@ -323,13 +355,18 @@
 
                 <TextView
                     android:id="@+id/btnWifi"
-                    style="@style/TopButton"
+                    style="@style/TopButtonIcon"
+                    android:contentDescription="@string/wifi"
+                    android:drawableStart="@drawable/ic_wifi"
+                    android:nextFocusDown="@+id/grid" />
+
+                <TextView
+                    android:id="@+id/lblWifi"
+                    style="@style/TopButtonLabel"
                     android:maxWidth="180dp"
                     android:singleLine="true"
                     android:ellipsize="end"
-                    android:text="@string/wifi"
-                    android:drawableStart="@drawable/ic_wifi"
-                    android:nextFocusDown="@+id/grid" />
+                    android:text="@string/wifi" />
 
                 <TextView
                     android:id="@+id/btnReorder"
@@ -340,31 +377,107 @@
 
                 <TextView
                     android:id="@+id/btnSettings"
-                    style="@style/TopButton"
-                    android:text="@string/settings"
+                    style="@style/TopButtonIcon"
+                    android:contentDescription="@string/settings"
                     android:drawableStart="@drawable/ic_settings"
                     android:nextFocusDown="@+id/grid" />
+
+                <TextView
+                    android:id="@+id/lblSettings"
+                    style="@style/TopButtonLabel"
+                    android:text="@string/settings" />
             </LinearLayout>
         </RelativeLayout>
 
-        <!-- The wrapper clips at the grid's edge; the grid itself must not clip so scaled tiles can overflow their cells. -->
+        <!-- The RSS carousel (news_hero): the featured headline as a hero banner at the top of Home —
+             photo, source, title, summary, meta and position dots over a soft fade to black. The height
+             is set in code to the shelf space the dock line leaves above it. Not a wallpaper and not a
+             second row of cards: it occupies this space, scrolls away with the page and is gone (with
+             everything it owns) whenever the news is off. -->
         <FrameLayout
+            android:id="@+id/newsCarousel"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:layout_marginTop="10dp">
+            android:layout_height="wrap_content"
+            android:focusable="true"
+            android:visibility="gone">
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/grid"
+            <com.gathin.tvhome.NewsBackdropView
+                android:id="@+id/newsBackdrop"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:paddingTop="10dp"
-                android:paddingBottom="40dp"
-                android:clipToPadding="false"
-                android:clipChildren="false"
-                android:overScrollMode="never"
-                android:scrollbars="none"
-                android:descendantFocusability="afterDescendants" />
+                android:importantForAccessibility="no" />
+
+            <LinearLayout
+                android:id="@+id/newsText"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom"
+                android:layout_marginStart="36dp"
+                android:layout_marginEnd="150dp"
+                android:layout_marginBottom="34dp"
+                android:orientation="vertical"
+                android:importantForAccessibility="no">
+
+                <TextView
+                    android:id="@+id/newsKicker"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:ellipsize="end"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="12sp"
+                    android:letterSpacing="0.14" />
+
+                <TextView
+                    android:id="@+id/newsHeadline"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    android:textColor="#FFFFFFFF"
+                    android:textSize="26sp"
+                    android:fontFamily="@font/outfit_light"
+                    android:letterSpacing="-0.01"
+                    android:lineSpacingExtra="2dp" />
+
+                <TextView
+                    android:id="@+id/newsSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:includeFontPadding="false"
+                    android:maxLines="2"
+                    android:ellipsize="end"
+                    android:textColor="#B8FFFFFF"
+                    android:textSize="13sp"
+                    android:fontFamily="@font/outfit_light" />
+
+                <TextView
+                    android:id="@+id/newsMeta"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:ellipsize="end"
+                    android:textColor="#99FFFFFF"
+                    android:textSize="11sp"
+                    android:letterSpacing="0.06" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/newsDots"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|end"
+                android:layout_marginEnd="36dp"
+                android:layout_marginBottom="40dp"
+                android:gravity="center"
+                android:orientation="horizontal"
+                android:importantForAccessibility="no" />
         </FrameLayout>
     </LinearLayout>
 

@@ -35,6 +35,25 @@
         <item name="android:drawablePadding">0dp</item>
     </style>
 
+    <!-- The word beside an icon-only pill: gone until the pill has focus (the top bar stays compact),
+         then it eases in beside the icon. Not focusable and not part of the accessibility tree: the
+         pill's contentDescription already says it. -->
+    <style name="TopButtonLabel">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">42dp</item>
+        <item name="android:layout_marginStart">2dp</item>
+        <item name="android:paddingEnd">14dp</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">@drawable/pill_text</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">@font/outfit_medium</item>
+        <item name="android:letterSpacing">0.01</item>
+        <item name="android:focusable">false</item>
+        <item name="android:clickable">false</item>
+        <item name="android:visibility">gone</item>
+        <item name="android:importantForAccessibility">no</item>
+    </style>
+
     <style name="SettingsRow">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">52dp</item>

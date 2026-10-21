@@ -57,6 +57,9 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         void onLibraryFocused();
         void onLibraryUp();
 
+        /** The library button's Down: the last row is the end of the page; the news carousel lives above the dock. */
+        void onLibraryDown();
+
         /** Opens the input an INPUT tile points at (an HDMI/AV card, see InputCards). */
         void onInputRequested(String inputId);
     }
@@ -374,6 +377,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             button.setOnKeyListener((v, key, event) -> {
                 if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
                 if (key == KeyEvent.KEYCODE_DPAD_UP) listener.onLibraryUp();
+                if (key == KeyEvent.KEYCODE_DPAD_DOWN) listener.onLibraryDown();
                 return key == KeyEvent.KEYCODE_DPAD_UP || key == KeyEvent.KEYCODE_DPAD_DOWN
                         || key == KeyEvent.KEYCODE_DPAD_LEFT || key == KeyEvent.KEYCODE_DPAD_RIGHT;
             });
